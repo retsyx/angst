@@ -1,0 +1,13 @@
+.DS_Store
+.codex/
+.vscode/
+/build/
+/.cache/
+/managed_components/
+/sdkconfig
+/sdkconfig.old
+/backups/
+/ota-password.txt
+/generated/
+/tools/commissioning/generated/
+/build-matter/

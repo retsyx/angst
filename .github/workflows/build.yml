@@ -1,0 +1,177 @@
+name: Build
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  firmware:
+    name: ESP32-S3 firmware
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      IDF_PATH: ${{ github.workspace }}/.ci-sdk/esp-idf
+      ESP_MATTER_PATH: ${{ github.workspace }}/.ci-sdk/esp-matter
+      IDF_TOOLS_PATH: ${{ github.workspace }}/.ci-sdk/tools
+      IDF_CCACHE_ENABLE: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: tools/commissioning/go.mod
+          cache: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Check out ESP-IDF 6.1
+        uses: actions/checkout@v7
+        with:
+          repository: espressif/esp-idf
+          ref: fff9895c82d744c7237be8847347bdd1b07c6643
+          path: .ci-sdk/esp-idf
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Check out verified ESP-Matter
+        uses: actions/checkout@v7
+        with:
+          repository: espressif/esp-matter
+          ref: 59574f3fb62fddc690b4127fd3a4a43cfce4245e
+          path: .ci-sdk/esp-matter
+          persist-credentials: false
+
+      - name: Install SDK prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git wget curl flex bison gperf gcc g++ pkg-config cmake ninja-build ccache \
+            python3 python3-pip python3-venv python3-dev \
+            libffi-dev libssl-dev dfu-util libusb-1.0-0 \
+            libdbus-1-dev libglib2.0-dev libavahi-client-dev unzip \
+            libgirepository1.0-dev libcairo2-dev libreadline-dev libevent-dev default-jre ffmpeg
+
+      - name: Install ESP-IDF and ESP-Matter
+        run: |
+          "$IDF_PATH/install.sh" esp32s3
+          source "$IDF_PATH/export.sh"
+          git -C "$ESP_MATTER_PATH" submodule update --init --depth 1
+          (
+            cd "$ESP_MATTER_PATH/connectedhomeip/connectedhomeip"
+            python3 scripts/checkout_submodules.py --platform esp32 --shallow --jobs 4
+          )
+          (
+            cd "$ESP_MATTER_PATH"
+            ./install.sh --no-host-tool
+          )
+
+      - name: Build firmware
+        run: |
+          source "$IDF_PATH/export.sh"
+          source "$ESP_MATTER_PATH/export.sh"
+          idf.py set-target esp32s3
+          idf.py build
+
+      - name: Run all host tests
+        timeout-minutes: 30
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          source "$IDF_PATH/export.sh"
+          host_tests_failed=0
+          for test_script in tests/test_*.py; do
+            echo "::group::$test_script"
+            if ! python "$test_script"; then
+              host_tests_failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$host_tests_failed"
+
+      - name: Package firmware
+        run: |
+          mkdir -p dist
+          cp build/native-display.bin dist/angst-esp32s3.bin
+          cp build/native-display.elf dist/angst-esp32s3.elf
+          python3 tools/package_firmware.py --build-dir build --output dist/angst-esp32s3-flash.zip
+          python3 tests/test_firmware_bundle.py --bundle dist/angst-esp32s3-flash.zip
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v7
+        with:
+          name: firmware-esp32s3
+          path: |
+            dist/angst-esp32s3.bin
+            dist/angst-esp32s3.elf
+            dist/angst-esp32s3-flash.zip
+          if-no-files-found: error
+
+  commissioner:
+    name: Commissioner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: tools/commissioning/go.mod
+          cache: false
+
+      - name: Test commissioner
+        working-directory: tools/commissioning
+        run: |
+          go test -mod=vendor ./...
+          go vet -mod=vendor ./...
+
+      - name: Build and package commissioner
+        working-directory: tools/commissioning
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          for commissioner_os in linux darwin windows; do
+            for commissioner_arch in amd64 arm64; do
+              package_name="angst-commissioner-$commissioner_os-$commissioner_arch"
+              package_dir="$RUNNER_TEMP/$package_name"
+              mkdir -p "$package_dir"
+              executable=angst-commissioner
+              if [[ "$commissioner_os" == windows ]]; then
+                executable+=.exe
+              fi
+              GOOS="$commissioner_os" GOARCH="$commissioner_arch" \
+                go build -mod=vendor -trimpath -o "$package_dir/$executable" .
+              cp README.md "$package_dir/README.md"
+              cp vendor/github.com/boombuler/barcode/LICENSE "$package_dir/LICENSE-barcode"
+              if [[ "$commissioner_os" == windows ]]; then
+                (cd "$RUNNER_TEMP" && zip -r "$GITHUB_WORKSPACE/dist/$package_name.zip" "$package_name")
+              else
+                tar -C "$RUNNER_TEMP" -czf "$GITHUB_WORKSPACE/dist/$package_name.tar.gz" "$package_name"
+              fi
+            done
+          done
+
+      - name: Upload commissioner
+        uses: actions/upload-artifact@v7
+        with:
+          name: commissioner
+          path: dist/angst-commissioner-*
+          if-no-files-found: error

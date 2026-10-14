@@ -1,0 +1,37 @@
+menu "Price display"
+
+    config DISPLAY_PASSWORD_SCREEN_FONT
+        bool
+        default y
+        select LV_FONT_MONTSERRAT_40
+
+    config DISPLAY_POLL_INTERVAL_SECONDS
+        int "Polling interval (seconds)"
+        range 1 86400
+        default 30
+
+    config DISPLAY_ANIMATION_DURATION_MS
+        int "Odometer animation duration (milliseconds)"
+        range 0 3600000
+        default 5000
+        help
+            Set to zero to show new prices immediately. The odometer header
+            also accepts an ODOMETER_ANIMATION_DURATION_MS preprocessor define.
+
+    config DISPLAY_FIGURE_SCALE_PERCENT
+        int "Stick figure scale (percent)"
+        range 25 800
+        default 140
+        help
+            Uniformly scale the figure, drawing strokes, margins, reach,
+            jumps, and movement speed. Animation durations stay the same.
+            100 is the original size, 75 is three-quarters size, and 200 is
+            twice the size. The display resolution and price font are
+            configured separately. The figure hides when the display is
+            too small to contain its scaled movement lanes.
+
+    config DISPLAY_OTA_ENABLE
+        bool "Enable settings and firmware upgrade web server"
+        default y
+
+endmenu
