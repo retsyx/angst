@@ -86,7 +86,12 @@ struct Framebuffer {
         lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
     }
 
-    ~Framebuffer() { lv_disp_remove(display); }
+    ~Framebuffer() {
+        lv_disp_remove(display);
+        // LVGL 8.4 leaves the driver's software draw context for its owner to free.
+        lv_mem_free(driver.draw_ctx);
+        driver.draw_ctx = nullptr;
+    }
     void refresh() { lv_refr_now(display); }
 };
 

@@ -41,7 +41,7 @@ struct lv_obj_t;
 struct lv_event_t { lv_obj_t *target; lv_draw_ctx_t *draw_ctx; };
 using lv_event_cb_t = void (*)(lv_event_t *);
 constexpr unsigned LV_EVENT_DRAW_MAIN = 1;
-struct lv_font_t { unsigned line_height; };
+struct lv_font_t { lv_coord_t line_height; };
 inline const lv_font_t lv_font_montserrat_40 = {44};
 inline const lv_font_t mock_default_font = {14};
 #define LV_FONT_DEFAULT &mock_default_font

@@ -55,7 +55,12 @@ struct Display {
         lv_obj_remove_style_all(root());lv_obj_clear_flag(root(),LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_style_bg_color(root(),lv_color_black(),0);lv_obj_set_style_bg_opa(root(),LV_OPA_COVER,0);
     }
-    ~Display(){lv_disp_remove(display);}
+    ~Display() {
+        lv_disp_remove(display);
+        // LVGL 8.4 leaves the driver's software draw context for its owner to free.
+        lv_mem_free(driver.draw_ctx);
+        driver.draw_ctx = nullptr;
+    }
     lv_obj_t *root(){return lv_disp_get_scr_act(display);}
     void render(){lv_obj_invalidate(root());lv_refr_now(display);assert(lv_mem_test()==LV_RES_OK);}
     void save(const std::string &name) {

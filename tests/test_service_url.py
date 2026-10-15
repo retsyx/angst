@@ -37,7 +37,8 @@ def main():
             header.write_text('#include "service_mock_idf.h"\n')
         executable = temporary / "service_url_test"
         subprocess.run(
-            [os.environ.get("CC", "cc"), "-std=c11", "-Wall", "-Wextra", "-Werror",
+            [os.environ.get("CC", "cc"), "-std=c11", "-D_POSIX_C_SOURCE=200809L",
+             "-Wall", "-Wextra", "-Werror",
              "-Wno-unused-variable", "-fsanitize=address,undefined",
              "-I" + str(temporary), "-I" + str(TESTS), "-I" + str(TESTS.parent / "main"),
              "-I" + str(parser), str(TESTS / "test_service_url.c"),
